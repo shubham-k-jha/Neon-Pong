@@ -4,7 +4,7 @@ A polished, responsive arcade Pong game built from the original lightweight HTML
 
 ## 🎮 Play Online
 
-**[Play Neon Pong](https://shubham-k-jha.github.io/pong/)**
+**[Play Neon Pong](https://shubham-k-jha.github.io/Neon-Pong/)**
 
 ## ✨ Features
 
