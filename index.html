@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pong Game</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --line: #94a3b8;
+        --paddle: #f8fafc;
+        --ball: #fbbf24;
+        --text: #e2e8f0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #1e293b, var(--bg));
+        color: var(--text);
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .game-wrapper {
+        width: min(90vw, 900px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .scoreboard {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: clamp(1.4rem, 2vw, 2.2rem);
+        font-weight: bold;
+        letter-spacing: 0.08em;
+      }
+
+      .score {
+        min-width: 90px;
+        text-align: center;
+      }
+
+      .game-area {
+        position: relative;
+        width: 100%;
+        height: 520px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 4px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .game-area::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 0;
+        width: 2px;
+        height: 100%;
+        transform: translateX(-50%);
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.7) 0,
+          rgba(255,255,255,0.7) 18px,
+          transparent 18px,
+          transparent 28px
+        );
+      }
+
+      .paddle {
+        position: absolute;
+        width: 14px;
+        height: 110px;
+        background: var(--paddle);
+        border-radius: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      #leftPaddle {
+        left: 28px;
+      }
+
+      #rightPaddle {
+        right: 28px;
+      }
+
+      .ball {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        background: var(--ball);
+        border-radius: 50%;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      .message {
+        position: absolute;
+        inset: auto 0 20px 0;
+        text-align: center;
+        font-size: 0.9rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(226, 232, 240, 0.82);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="game-wrapper">
+      <div class="scoreboard">
+        <div class="score" id="leftScore">0</div>
+        <div>PONG</div>
+        <div class="score" id="rightScore">0</div>
+      </div>
+
+      <div class="game-area" id="gameArea">
+        <div class="paddle" id="leftPaddle"></div>
+        <div class="paddle" id="rightPaddle"></div>
+        <div class="ball" id="ball"></div>
+        <div class="message">Move with mouse or ↑ ↓</div>
+      </div>
+    </div>
+
+    <script>
+      const gameArea = document.getElementById('gameArea');
+      const leftPaddle = document.getElementById('leftPaddle');
+      const rightPaddle = document.getElementById('rightPaddle');
+      const ball = document.getElementById('ball');
+      const leftScoreDisplay = document.getElementById('leftScore');
+      const rightScoreDisplay = document.getElementById('rightScore');
+
+      const game = {
+        width: gameArea.clientWidth,
+        height: gameArea.clientHeight,
+        paddleHeight: 110,
+        paddleWidth: 14,
+        ballSize: 18,
+        paddleSpeed: 8,
+        computerSpeed: 5.5,
+        ballSpeed: 6,
+        maxBallSpeed: 11,
+        score: { left: 0, right: 0 },
+      };
+
+      const state = {
+        leftPaddleY: (game.height - game.paddleHeight) / 2,
+        rightPaddleY: (game.height - game.paddleHeight) / 2,
+        ballX: game.width / 2,
+        ballY: game.height / 2,
+        ballVX: 5,
+        ballVY: 3,
+        keys: { up: false, down: false },
+        mouseY: game.height / 2,
+        animId: null,
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function resetBall(direction = 1) {
+        const angle = (Math.random() * 120 - 60) * (Math.PI / 180);
+        const speed = Math.min(game.ballSpeed + Math.random() * 1.5, game.maxBallSpeed);
+
+        state.ballX = game.width / 2;
+        state.ballY = game.height / 2;
+        state.ballVX = Math.cos(angle) * speed * direction;
+        state.ballVY = Math.sin(angle) * speed;
+      }
+
+      function updateScores() {
+        leftScoreDisplay.textContent = game.score.left;
+        rightScoreDisplay.textContent = game.score.right;
+      }
+
+      function moveLeftPaddle() {
+        if (state.keys.up) {
+          state.leftPaddleY -= game.paddleSpeed;
+        }
+        if (state.keys.down) {
+          state.leftPaddleY += game.paddleSpeed;
+        }
+
+        state.leftPaddleY = clamp(state.leftPaddleY, 0, game.height - game.paddleHeight);
+      }
+
+      function moveRightPaddle() {
+        const paddleCenter = state.rightPaddleY + game.paddleHeight / 2;
+        const ballCenter = state.ballY;
+        const diff = ballCenter - paddleCenter;
+
+        if (Math.abs(diff) > 10) {
+          state.rightPaddleY += Math.sign(diff) * game.computerSpeed;
+        }
+
+        state.rightPaddleY = clamp(state.rightPaddleY, 0, game.height - game.paddleHeight);
+      }
+
+      function updateBall() {
+        state.ballX += state.ballVX;
+        state.ballY += state.ballVY;
+
+        if (state.ballY <= 0 || state.ballY + game.ballSize >= game.height) {
+          state.ballY = clamp(state.ballY, 0, game.height - game.ballSize);
+          state.ballVY *= -1;
+        }
+
+        const leftX = 28;
+        const rightX = game.width - 28 - game.paddleWidth;
+        const leftPaddleTop = state.leftPaddleY;
+        const leftPaddleBottom = state.leftPaddleY + game.paddleHeight;
+        const rightPaddleTop = state.rightPaddleY;
+        const rightPaddleBottom = state.rightPaddleY + game.paddleHeight;
+
+        const ballLeft = state.ballX;
+        const ballRight = state.ballX + game.ballSize;
+        const ballTop = state.ballY;
+        const ballBottom = state.ballY + game.ballSize;
+
+        if (
+          state.ballVX < 0 &&
+          ballLeft <= leftX + game.paddleWidth &&
+          ballRight >= leftX &&
+          ballBottom >= leftPaddleTop &&
+          ballTop <= leftPaddleBottom
+        ) {
+          const collidePoint = (state.ballY + game.ballSize / 2 - (state.leftPaddleY + game.paddleHeight / 2)) / (game.paddleHeight / 2);
+          const angle = collidePoint * (Math.PI / 3);
+          const speed = Math.min(Math.hypot(state.ballVX, state.ballVY) + 0.4, game.maxBallSpeed);
+
+          state.ballVX = Math.cos(angle) * speed;
+          state.ballVY = Math.sin(angle) * speed;
+          state.ballX = leftX + game.paddleWidth + 1;
+        }
+
+        if (
+          state.ballVX > 0 &&
+          ballRight >= rightX &&
+          ballLeft <= rightX + game.paddleWidth &&
+          ballBottom >= rightPaddleTop &&
+          ballTop <= rightPaddleBottom
+        ) {
+          const collidePoint = (state.ballY + game.ballSize / 2 - (state.rightPaddleY + game.paddleHeight / 2)) / (game.paddleHeight / 2);
+          const angle = collidePoint * (Math.PI / 3);
+          const speed = Math.min(Math.hypot(state.ballVX, state.ballVY) + 0.4, game.maxBallSpeed);
+
+          state.ballVX = -Math.cos(angle) * speed;
+          state.ballVY = Math.sin(angle) * speed;
+          state.ballX = rightX - 1;
+        }
+
+        if (state.ballX < -game.ballSize) {
+          game.score.right += 1;
+          updateScores();
+          resetBall(1);
+        }
+
+        if (state.ballX > game.width) {
+          game.score.left += 1;
+          updateScores();
+          resetBall(-1);
+        }
+      }
+
+      function render() {
+        leftPaddle.style.top = `${state.leftPaddleY}px`;
+        rightPaddle.style.top = `${state.rightPaddleY}px`;
+        ball.style.left = `${state.ballX}px`;
+        ball.style.top = `${state.ballY}px`;
+      }
+
+      function gameLoop() {
+        moveLeftPaddle();
+        moveRightPaddle();
+        updateBall();
+        render();
+        requestAnimationFrame(gameLoop);
+      }
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowUp' || event.key.toLowerCase() === 'w') {
+          state.keys.up = true;
+        }
+        if (event.key === 'ArrowDown' || event.key.toLowerCase() === 's') {
+          state.keys.down = true;
+        }
+      });
+
+      document.addEventListener('keyup', (event) => {
+        if (event.key === 'ArrowUp' || event.key.toLowerCase() === 'w') {
+          state.keys.up = false;
+        }
+        if (event.key === 'ArrowDown' || event.key.toLowerCase() === 's') {
+          state.keys.down = false;
+        }
+      });
+
+      gameArea.addEventListener('mousemove', (event) => {
+        const rect = gameArea.getBoundingClientRect();
+        const mouseY = event.clientY - rect.top;
+        state.leftPaddleY = clamp(mouseY - game.paddleHeight / 2, 0, game.height - game.paddleHeight);
+      });
+
+      updateScores();
+      resetBall(1);
+      render();
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>
