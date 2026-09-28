@@ -62,7 +62,8 @@
   }
 
   function startGame(){
-    resetMatch(); game.state='COUNTDOWN'; game.startTime=performance.now(); hideAllScreens(); $('countdownScreen').classList.remove('hidden'); game.countdown=3; $('countdownValue').textContent='3'; playTone(520,.08,'triangle');
+    clearInterval(game.countdownTimer);
+    resetMatch(); game.state='COUNTDOWN'; game.startTime=performance.now(); game.lastTime=performance.now(); hideAllScreens(); $('countdownScreen').classList.remove('hidden'); game.countdown=3; $('countdownValue').textContent='3'; playTone(520,.08,'triangle');
     clearInterval(game.countdownTimer); game.countdownTimer=setInterval(()=>{game.countdown--; if(game.countdown>0){$('countdownValue').textContent=game.countdown;playTone(520+game.countdown*90,.07,'triangle')}else{$('countdownValue').textContent='GO!';playTone(880,.12,'sine');setTimeout(()=>{if(game.state==='COUNTDOWN'){game.state='PLAYING';$('countdownScreen').classList.add('hidden');resetBall(Math.random()<.5?1:-1)}},300);clearInterval(game.countdownTimer)}},750);
   }
   function pauseGame(){if(game.state!=='PLAYING')return;game.state='PAUSED';$('pauseScreen').classList.remove('hidden')}
@@ -155,14 +156,14 @@
   function drawTrail(){if(!settings.trail||settings.reducedMotion)return;ctx.save();for(const t of game.trail){const x=t.x*game.w,y=t.y*game.h,r=game.ball.r*game.w*(t.a*.65);ctx.globalAlpha=Math.max(0,t.a*.35);ctx.fillStyle='#65e9ff';ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill()}ctx.restore()}
   function drawParticles(){ctx.save();for(const p of game.particles){ctx.globalAlpha=clamp(p.life*2,0,1);ctx.fillStyle=p.type==='ai'?'#b66cff':p.type==='player'?'#36e7ff':p.type==='power'?'#fff':'#92a5ff';ctx.beginPath();ctx.arc(p.x*game.w,p.y*game.h,p.size*game.w,0,Math.PI*2);ctx.fill()}ctx.restore()}
   function drawPowerups(){for(const p of game.powerups){ctx.save();const x=p.x*game.w,y=p.y*game.h,r=p.r*game.w*(1+.12*Math.sin(p.pulse));ctx.globalAlpha=.9;ctx.shadowBlur=18;ctx.shadowColor='#fff';ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.stroke();ctx.font=`${Math.max(11,r*1.1)}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText({speed:'⚡',shield:'🛡',slow:'🐌',wide:'↔',fire:'🔥'}[p.type],x,y);ctx.restore()}}
-  function roundRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+  function roundRect(x,y,w,h,r){ctx.beginPath();if(ctx.roundRect){ctx.roundRect(x,y,w,h,r);return}ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y)}
 
   function updateHUD(){ $('playerScore').textContent=game.score.player;$('aiScore').textContent=game.score.ai;$('rallyValue').textContent=game.rally;$('footerRally').textContent=game.rally;$('bestScore').textContent=records.bestScore;$('bestRally').textContent=records.bestRally }
   function formatTime(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`}
 
   let audioCtx=null, musicTimer=null;
-  function ensureAudio(){if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}
-  function playTone(freq,dur,type){if(!settings.sound)return;try{ensureAudio();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(.035,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur)}catch{}}
+  function ensureAudio(){try{const AudioAPI=window.AudioContext||window.webkitAudioContext;if(!AudioAPI)return false;if(!audioCtx)audioCtx=new AudioAPI();if(audioCtx.state==='suspended')audioCtx.resume();return true}catch{return false}}
+  function playTone(freq,dur,type){if(!settings.sound)return;try{if(!ensureAudio()||!audioCtx)return;const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(.035,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur)}catch{}}
   function toggleMusic(){settings.music=!settings.music;syncSettings();if(settings.music)startMusic();else stopMusic()}
   function startMusic(){stopMusic();if(!settings.music)return;try{ensureAudio();let step=0;musicTimer=setInterval(()=>{if(game.state==='PLAYING'){const notes=[220,277,330,415];playTone(notes[step++%notes.length],.08,'triangle')}},430)}catch{}}
   function stopMusic(){if(musicTimer)clearInterval(musicTimer);musicTimer=null}
@@ -175,7 +176,7 @@
   arena.addEventListener('pointerdown',e=>{if(game.state!=='PLAYING')return;game.pointerId=e.pointerId;arena.setPointerCapture(e.pointerId);movePointer(e)});
   arena.addEventListener('pointermove',e=>{if(game.pointerId===e.pointerId)movePointer(e)});arena.addEventListener('pointerup',e=>{if(game.pointerId===e.pointerId)game.pointerId=null});
   function movePointer(e){const r=canvas.getBoundingClientRect();game.playerX=clamp((e.clientX-r.left)/r.width,game.playerWidth/2,1-game.playerWidth/2);$('touchHint').style.opacity='0'}
-  $('startBtn').onclick=()=>{ensureAudio();startGame()};$('resumeBtn').onclick=resumeGame;$('restartBtn').onclick=restart;$('mainMenuBtn').onclick=mainMenu;$('playAgainBtn').onclick=restart;$('resultMenuBtn').onclick=mainMenu;$('settingsBtn').onclick=openSettings;$('pauseSettingsBtn').onclick=openSettings;$('closeSettings').onclick=closeSettings;$('soundBtn').onclick=()=>{settings.sound=!settings.sound;syncSettings();if(settings.sound)playTone(660,.06,'sine')};$('musicBtn').onclick=toggleMusic;
+  $('startBtn').onclick=()=>{startGame();ensureAudio();};$('resumeBtn').onclick=resumeGame;$('restartBtn').onclick=restart;$('mainMenuBtn').onclick=mainMenu;$('playAgainBtn').onclick=restart;$('resultMenuBtn').onclick=mainMenu;$('settingsBtn').onclick=openSettings;$('pauseSettingsBtn').onclick=openSettings;$('closeSettings').onclick=closeSettings;$('soundBtn').onclick=()=>{settings.sound=!settings.sound;syncSettings();if(settings.sound)playTone(660,.06,'sine')};$('musicBtn').onclick=toggleMusic;
   $('soundToggle').onchange=e=>{settings.sound=e.target.checked;syncSettings()};$('musicToggle').onchange=e=>{settings.music=e.target.checked;syncSettings();settings.music?startMusic():stopMusic()};$('particlesToggle').onchange=e=>{settings.particles=e.target.checked;syncSettings()};$('shakeToggle').onchange=e=>{settings.shake=e.target.checked;syncSettings()};$('trailToggle').onchange=e=>{settings.trail=e.target.checked;syncSettings()};$('motionToggle').onchange=e=>{settings.reducedMotion=e.target.checked;syncSettings()};
   $('resetStatsBtn').onclick=()=>{records={bestScore:0,bestRally:0,games:0,wins:0,losses:0};save('neonPongStats',records);updateHUD()};
   window.addEventListener('resize',resize);window.addEventListener('blur',()=>{game.keys.left=false;game.keys.right=false;if(game.state==='PLAYING')pauseGame()});
